@@ -92,6 +92,18 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
 .hp{margin:0 0 14px;font-size:15px;line-height:1.45;font-weight:400}
 .demo.tap b{animation:tp 1.8s ease-out infinite}
 @keyframes tp{0%{transform:scale(.6);opacity:.9}70%,100%{transform:scale(2.2);opacity:0}}
+.item{-webkit-touch-callout:none}
+.item.hold{transform:scale(.97);background:rgb(var(--a5)/.2);transition:transform .7s ease,background .7s ease}
+.mh{font-size:13px;font-weight:600;color:var(--hint);margin:14px 6px 0;letter-spacing:.02em}
+.ask{position:fixed;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;padding:28px;background:rgba(20,18,16,.45);opacity:0;visibility:hidden;touch-action:none;transition:opacity .25s,visibility 0s linear .25s}
+.ask.open{opacity:1;visibility:visible;transition:opacity .25s,visibility 0s}
+.ac{max-width:320px;text-align:center;padding:30px 28px;border-radius:30px;background:var(--bg1);color:var(--ink);transition:transform .26s ease-in,opacity .26s}
+.ask.go .ac{transform:translateY(-40vh);opacity:0}
+.at{font-size:44px;font-weight:700;color:rgb(var(--a5));line-height:1.1}
+.as{margin-top:12px;font-size:15px;font-weight:400;line-height:1.4;opacity:.75}
+.cap{transition:opacity .5s;opacity:0}
+.num{transition:color .4s,transform .25s,opacity .25s}
+.num.holding{transform:scale(.94);opacity:.7;transition:color .4s,transform .9s ease,opacity .9s ease}
 .item.lock{opacity:.5}
 @media (prefers-reduced-motion:reduce){.hint i{animation:none;opacity:.4}.demo b{animation:none}.caret{animation:none}.w,.ch.new{transition-duration:.01s;animation-duration:.01s}}
 </style>
@@ -105,6 +117,7 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
 </div>
 <div class="edge" id="edge"></div>
 <section class="hist" id="hist" aria-hidden="true"><div class="list" id="list"></div></section>
+<div class="ask" id="ask" role="alertdialog" aria-hidden="true"><div class="ac"><div class="at" id="at"></div><div class="as" id="as"></div></div></div>
 <div class="help" id="help" role="dialog" aria-hidden="true"><div id="rows"></div></div>
 <script>
 (function(){
@@ -114,7 +127,7 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
       edge=$("edge"),hist=$("hist"),list=$("list"),help=$("help"),rowsEl=$("rows");
   var data={budget:0,exp:[],p:[50,20]},typed="",ex=null,bm=false,trail=[],histOpen=false,helpOpen=false,helpAt=0,multi=false,last={t:"",m:""};
 
-  function load(){try{var d=JSON.parse(localStorage.getItem(KEY));if(d&&typeof d.budget==="number"&&Array.isArray(d.exp))data=d}catch(e){}if(!Array.isArray(data.p))data.p=[50,20]}
+  function load(){try{var d=JSON.parse(localStorage.getItem(KEY));if(d&&typeof d.budget==="number"&&Array.isArray(d.exp))data=d}catch(e){}if(!Array.isArray(data.p))data.p=[50,20];if(data.budget&&!data.start){var f=data.exp.reduce(function(m,e){return Math.min(m,e.t)},Date.now());data.start=new Date(f).setHours(0,0,0,0);save()}}
   function save(){try{localStorage.setItem(KEY,JSON.stringify(data))}catch(e){}}
   function fmt(n){var r=Math.round(n);return(r<0?"\u2212":"")+Math.abs(r).toLocaleString("en-US")}
   function buzz(){try{if(navigator.vibrate)navigator.vibrate(12)}catch(e){}}
@@ -161,6 +174,7 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
     budget:function(){hiss(0,.1,.03,400,1200);arp([392,493.88,587.33,783.99],.08,.8,.06)},
     recall:function(){tone(587.33,0,.28,.07)},
     cancel:function(){tone(392,0,.28,.06,"triangle",294)},
+del:function(){hiss(0,.25,.05,1800,250);tone(220,0,.35,.08,"sine",110)},
     nope:function(){tone(110,0,.14,.1,"sine",85)},
     up:function(){hiss(0,.22,.05,300,1600)},
     down:function(){hiss(0,.22,.05,1600,300)},
@@ -185,7 +199,8 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
         start=monthStart(),t0=new Date(y,m,d).getTime(),spent=0,today=0;
     data.exp.forEach(function(e){if(e.t>=start){spent+=e.a;if(e.t>=t0)today+=e.a}});
     var pot=data.budget*(100-data.p[0]-data.p[1])/100,allow=(pot-(spent-today))/left;
-    return {spent:spent,left:pot-spent,allow:allow,today:allow-today,pot:pot};
+    var st=data.start||t0,dd=Math.max(0,Math.round((t0-st)/864e5)),wl=Math.min(left,7-dd%7),wk=allow*wl;
+return {spent:spent,left:pot-spent,allow:allow,today:allow-today,pot:pot,week:wk-today,wallow:wk};
   }
 
   function render(){
@@ -193,8 +208,8 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
     var s=stats(),typing=typed!==""||bm||!!ex,mode=typing?"t":"r",txt,col;
     if(typing){txt=typed===""?"0":typed;col=bm?"rgb(var(--a1))":(ex?"rgb(var(--a0))":"var(--ink)")}
     else{
-      txt=fmt(s.today);
-      col=(s.today<0||s.allow<=0)?"rgb(var(--a5))":(s.today<s.allow*.25?"rgb(var(--a0))":"rgb(var(--a3))");
+      var tv=data.mode==="week"?s.week:s.today,ta=data.mode==="week"?s.wallow:s.allow;txt=fmt(tv);
+      col=(tv<0||ta<=0)?"rgb(var(--a5))":(tv<ta*.25?"rgb(var(--a0))":"rgb(var(--a3))");
     }
     num.style.color=col;
     num.style.fontSize=size(txt.length);
@@ -210,7 +225,7 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
     if(typing){var k=document.createElement("span");k.className="caret";num.appendChild(k)}
     last={t:txt,m:mode};
     var sv=parseFloat(typed.replace(",","."));
-    cap.textContent="";
+    
     ed.style.display=bm?"flex":"none";
     if(bm) paintEd(sv);
     fc.textContent="";
@@ -251,7 +266,7 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
     var v=parseFloat(typed.replace(",","."));
     if(!(v>0)){SND.nope();return}
     if(bm){
-      data.budget=v;bm=false;typed="";save();buzz();SND.budget();syncInput();render();return;
+      data.budget=v;if(!data.start)data.start=new Date().setHours(0,0,0,0);bm=false;typed="";save();buzz();SND.budget();syncInput();render();return;
     }
     if(ex){
       if(!editable(ex)){ex=null;typed="";syncInput();render();return}
@@ -294,15 +309,17 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
 
   /* gestures */
   var sx=0,sy=0,down=false;
-  stage.addEventListener("pointerdown",function(e){down=true;sx=e.clientX;sy=e.clientY});
+  stage.addEventListener("pointerdown",function(e){down=true;sx=e.clientX;sy=e.clientY;armHold(e)});
   stage.addEventListener("pointerup",function(e){
     if(!down) return;
+if(holdFired){holdFired=false;down=false;return}
     down=false;
     if(multi||histOpen||helpOpen) return;
     var dx=e.clientX-sx,dy=e.clientY-sy;
     if(sx>window.innerWidth-36&&dx<-50){openHist();return}
     if(dy<-80&&Math.abs(dx)<70){SND.up();commitTyped();return}
-    if(dy>80&&Math.abs(dx)<70){SND.down();toggleBm();return}
+    if(dy>80&&Math.abs(dx)<70){if(bm||ex){SND.down();toggleBm()}return}
+if(Math.abs(dx)>70&&Math.abs(dy)<50&&typed===""&&!bm&&!ex){toggleMode();return}
     input.focus();
   });
 
@@ -310,49 +327,58 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
   function openHist(){SND.up();if(ex){ex=null;typed="";syncInput();render()}paintList();hist.scrollTop=0;hist.classList.add("open");hist.setAttribute("aria-hidden","false");histOpen=true;input.blur()}
   function closeHist(){if(histOpen)SND.down();hist.classList.remove("open");hist.setAttribute("aria-hidden","true");histOpen=false}
   function wire(r,e){
-    var x0=0,y0=0,on=false,mv=false;
-    r.addEventListener("pointerdown",function(ev){x0=ev.clientX;y0=ev.clientY;on=true;mv=false});
-    r.addEventListener("pointermove",function(ev){
-      if(on&&Math.abs(ev.clientX-x0)+Math.abs(ev.clientY-y0)>10) mv=true;
-    });
-    r.addEventListener("pointerup",function(){
-      if(!on) return;
-      on=false;
-      if(!mv) editExp(e);
-    });
-    r.addEventListener("pointercancel",function(){on=false});
-  }
-  function editExp(e){
+var x0=0,y0=0,on=false,mv=false,hold=null,fired=false;
+function clr(){clearTimeout(hold);r.classList.remove("hold")}
+r.addEventListener("pointerdown",function(ev){
+if(Object.keys(tp).length>1){clr();on=false;return}
+x0=ev.clientX;y0=ev.clientY;on=true;mv=false;fired=false;
+r.classList.add("hold");
+hold=setTimeout(function(){fired=true;r.classList.remove("hold");buzz();askItem(e)},700);
+});
+r.addEventListener("pointermove",function(ev){
+if(on&&Math.abs(ev.clientX-x0)+Math.abs(ev.clientY-y0)>10){mv=true;clr()}
+});
+r.addEventListener("pointerup",function(){
+if(!on) return;
+on=false;clr();
+if(!mv&&!fired&&editable(e)) editExp(e);
+});
+r.addEventListener("pointercancel",function(){on=false;clr()});
+r.addEventListener("contextmenu",function(ev){ev.preventDefault()});
+}
+function editExp(e){
     if(!editable(e)) return;
     SND.recall();ex=e;bm=false;typed=String(e.a);
     closeHist();syncInput();render();
     input.focus();
   }
   function paintList(){
-    list.textContent="";
-    if(data.budget){
-      var sp=document.createElement("div");sp.className="split";
-      [[data.p[0],"--a0"],[data.p[1],"--a1"],[100-data.p[0]-data.p[1],"--a3"]].forEach(function(p){
-        var c=document.createElement("div");c.className="sc";
-        c.style.background="rgb(var("+p[1]+")/.22)";
-        c.style.flex=Math.max(p[0],14);
-        c.textContent=fmt(data.budget*p[0]/100);
-        sp.appendChild(c);
-      });
-      list.appendChild(sp);
-    }
-    var st=monthStart(),arr=data.exp.filter(function(e){return e.t>=st}).reverse();
-    if(!arr.length){var g=document.createElement("div");g.className="empty";list.appendChild(g);return}
-    arr.forEach(function(e){
-      var r=document.createElement("div");r.className="item";
-      var a=document.createElement("span");a.textContent=fmt(e.a);
-      var d=document.createElement("span");d.className="d";
-      d.textContent=new Date(e.t).toLocaleDateString("en-US",{day:"numeric",month:"short"});
-      r.appendChild(a);r.appendChild(d);list.appendChild(r);
-      if(editable(e)) wire(r,e); else r.classList.add("lock");
-    });
-  }
-  var ps=0,py=0,pd=false;
+list.textContent="";
+if(data.budget){
+var sp=document.createElement("div");sp.className="split";
+[[data.p[0],"--a0"],[data.p[1],"--a1"],[100-data.p[0]-data.p[1],"--a3"]].forEach(function(p){
+var c=document.createElement("div");c.className="sc";
+c.style.background="rgb(var("+p[1]+")/.22)";
+c.style.flex=Math.max(p[0],14);
+c.textContent=fmt(data.budget*p[0]/100);
+sp.appendChild(c);
+});
+list.appendChild(sp);
+}
+var arr=data.exp.slice().sort(function(a,b){return b.t-a.t});
+if(!arr.length){var g=document.createElement("div");g.className="empty";list.appendChild(g);return}
+var curM="";
+arr.forEach(function(e){
+var mk=monthKey(e.t);
+if(mk!==curM){curM=mk;var h=document.createElement("div");h.className="mh";h.textContent=monthName(e.t);list.appendChild(h)}
+var r=document.createElement("div");r.className="item"+(editable(e)?"":" lock");
+var a=document.createElement("span");a.textContent=fmt(e.a);
+var d=document.createElement("span");d.className="d";
+d.textContent=new Date(e.t).toLocaleDateString("en-US",{day:"numeric",month:"short"});
+r.appendChild(a);r.appendChild(d);list.appendChild(r);wire(r,e);
+});
+}
+var ps=0,py=0,pd=false;
   hist.addEventListener("pointerdown",function(e){pd=true;ps=e.clientX;py=e.clientY});
   hist.addEventListener("pointerup",function(e){
     if(!pd) return;
@@ -362,14 +388,18 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
 
   /* help: three-finger tap */
   function addP(t){var p=document.createElement("p");p.className="hp";p.textContent=t;rowsEl.appendChild(p)}
-  addP("The number in the center shows how much you can spend today. Green: all good. Orange: the limit is almost used up. Red: you're over the limit.");
+  addP("The number in the center shows how much you can spend today or this week (swipe sideways to switch). Weeks count from the day you first entered your salary. Green: all good. Orange: the limit is almost used up. Red: you're over the limit.");
   addP("Your salary is split into essentials, savings and your own spending. Log only your own spending: the daily limit is calculated from that share. You can adjust the shares.");
   [["m",0,14,0,-14,"Swipe up: add an expense"],
-   ["m",0,-14,0,14,"Swipe down: salary and shares"],
+   ["t",0,0,0,0,"Hold the number: change salary"],
+["m",0,-14,0,14,"Swipe down: cancel"],
    ["m",-14,0,14,0,"In salary mode: drag the dividers"],
-   ["m",28,0,-28,0,"From the right edge: history"],
+   ["m",-14,0,14,0,"Swipe sideways: today or this week"],
+["m",28,0,-28,0,"From the right edge: history"],
    ["t",0,0,0,0,"Tap today's expense: edit"],
-   ["m",-14,0,14,0,"Swipe right: close history"]
+   ["m",-14,0,14,0,"Swipe right: close history"],
+["t",0,0,0,0,"Hold an expense in history: delete"],
+["m",14,0,-14,0,"Two fingers left in history: delete a month"]
   ].forEach(function(r){
     var row=document.createElement("div");row.className="row";
     var d=document.createElement("span");d.className="demo"+(r[0]==="t"?" tap":"");
@@ -379,8 +409,8 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
     var t=document.createElement("span");t.textContent=r[5];
     row.appendChild(d);row.appendChild(t);rowsEl.appendChild(row);
   });
-  addP("Expenses can be edited but not deleted. You can only edit on the same day: after midnight an expense locks and fades in the history. Tap an expense, or erase the amount completely and once more: the last expense opens. Swipe up saves the edit, swipe down cancels.");
-  function openHelp(){help.classList.add("open");help.setAttribute("aria-hidden","false");helpOpen=true;SND.help();helpAt=Date.now();input.blur()}
+  addP("Expenses can be edited on the day they were added; after midnight they lock. Tap an expense, or erase the amount and once more, to edit: swipe up saves, swipe down cancels. Hold an expense in history to delete it, then swipe up to confirm. Swipe two fingers left in history to delete the latest month, and again for the one before.");
+  function openHelp(){if(askOpen)return;help.classList.add("open");help.setAttribute("aria-hidden","false");helpOpen=true;SND.help();helpAt=Date.now();input.blur()}
   function closeHelp(){
     if(Date.now()-helpAt<500) return;
     help.classList.remove("open");help.setAttribute("aria-hidden","true");helpOpen=false;SND.helpOff();
@@ -408,7 +438,67 @@ body{margin:0;height:100%;overflow:hidden;background-color:var(--bg2);background
   window.addEventListener("pointerup",endPtr,true);
   window.addEventListener("pointercancel",endPtr,true);
 
-  var ed=$("ed"),edSeg=[],edH=[],drag=-1;
+  var ask=$("ask"),askOpen=false,pending=null,aSx=0,aSy=0,aDown=false,hp={},mg=null;
+function monthKey(t){var d=new Date(t);return d.getFullYear()*12+d.getMonth()}
+function monthName(t){var d=new Date(t),o={month:"long"};if(d.getFullYear()!==new Date().getFullYear())o.year="numeric";return d.toLocaleDateString("en-US",o)}
+function showAsk(title,sub,p){pending=p;$("at").textContent=title;$("as").textContent=sub;ask.classList.add("open");ask.setAttribute("aria-hidden","false");askOpen=true;SND.recall();input.blur()}
+function closeAsk(){ask.classList.remove("open","go");ask.setAttribute("aria-hidden","true");askOpen=false;pending=null}
+function askItem(e){showAsk(fmt(e.a),"Delete this expense? Swipe up to confirm, tap to cancel.",{t:"e",e:e})}
+function askMonth(){
+if(!data.exp.length){SND.nope();return}
+var latest=data.exp.reduce(function(m,e){return e.t>m?e.t:m},0);
+showAsk(monthName(latest),"Delete all expenses of this month? Swipe up to confirm, tap to cancel.",{t:"m",mk:monthKey(latest)});
+}
+function doDelete(){
+var p=pending;if(!p) return;
+if(p.t==="s"){bm=true;typed=String(data.budget);syncInput();SND.modeOn();buzz();render();return}
+data.exp=data.exp.filter(function(q){return p.t==="e"?q.id!==p.e.id:monthKey(q.t)!==p.mk});
+save();SND.del();buzz();rebuildTrail();render();paintList();
+}
+ask.addEventListener("pointerdown",function(e){aDown=true;aSx=e.clientX;aSy=e.clientY});
+ask.addEventListener("pointerup",function(e){
+if(!aDown) return;
+aDown=false;
+var dx=e.clientX-aSx,dy=e.clientY-aSy;
+if(dy<-80&&Math.abs(dx)<70){ask.classList.add("go");doDelete();setTimeout(closeAsk,280)}
+else{SND.cancel();closeAsk()}
+});
+ask.addEventListener("pointercancel",function(){aDown=false});
+hist.addEventListener("pointerdown",function(e){
+hp[e.pointerId]={x:e.clientX,y:e.clientY};
+var k=Object.keys(hp);
+mg=k.length===2?{x:(hp[k[0]].x+hp[k[1]].x)/2,y:(hp[k[0]].y+hp[k[1]].y)/2}:null;
+});
+hist.addEventListener("pointermove",function(e){var p=hp[e.pointerId];if(p){p.x=e.clientX;p.y=e.clientY}});
+function histEnd(e){
+var p=hp[e.pointerId];if(!p) return;
+p.x=e.clientX;p.y=e.clientY;
+var k=Object.keys(hp);
+if(mg&&k.length===2&&e.type==="pointerup"){
+var cx=(hp[k[0]].x+hp[k[1]].x)/2,cy=(hp[k[0]].y+hp[k[1]].y)/2;
+if(cx-mg.x<-80&&Math.abs(cy-mg.y)<70){mg=null;askMonth()}
+}
+delete hp[e.pointerId];
+if(!Object.keys(hp).length) mg=null;
+}
+hist.addEventListener("pointerup",histEnd);
+hist.addEventListener("pointercancel",histEnd);
+var holdT=null,holdFired=false;
+function stopHold(){clearTimeout(holdT);holdT=null;num.classList.remove("holding")}
+function askSalary(){showAsk(fmt(data.budget),"Change your salary? Swipe up to continue, tap to cancel.",{t:"s"})}
+function armHold(e){
+stopHold();holdFired=false;
+if(typed!==""||bm||ex||!data.budget||helpOpen||histOpen||askOpen||multi) return;
+num.classList.add("holding");
+holdT=setTimeout(function(){holdFired=true;stopHold();buzz();askSalary()},900);
+}
+stage.addEventListener("pointermove",function(e){if(holdT&&Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>12) stopHold()});
+stage.addEventListener("pointerup",stopHold);
+stage.addEventListener("pointercancel",function(){stopHold();holdFired=false});
+var capT=null;
+function flashCap(t){cap.textContent=t;cap.style.opacity=1;clearTimeout(capT);capT=setTimeout(function(){cap.style.opacity=0},1600)}
+function toggleMode(){data.mode=data.mode==="week"?"day":"week";save();SND.tick(50);buzz();render();flashCap(data.mode==="week"?"this week":"today")}
+var ed=$("ed"),edSeg=[],edH=[],drag=-1;
   for(var gi=0;gi<3;gi++){var sg=document.createElement("div");sg.className="sg g"+(gi+1);ed.appendChild(sg);edSeg.push(sg)}
   for(var hi=0;hi<2;hi++){var hd=document.createElement("div");hd.className="hd";ed.appendChild(hd);edH.push(hd)}
   function paintEd(sv){
