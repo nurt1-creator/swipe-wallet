@@ -194,14 +194,18 @@ del:function(){hiss(0,.25,.05,1800,250);tone(220,0,.35,.08,"sine",110)},
 
   /* how much you can spend per day to stay within budget */
   function stats(){
-    var n=new Date(),y=n.getFullYear(),m=n.getMonth(),d=n.getDate(),
-        days=new Date(y,m+1,0).getDate(),left=days-d+1,
-        start=monthStart(),t0=new Date(y,m,d).getTime(),spent=0,today=0;
-    data.exp.forEach(function(e){if(e.t>=start){spent+=e.a;if(e.t>=t0)today+=e.a}});
-    var pot=data.budget*(100-data.p[0]-data.p[1])/100,allow=(pot-(spent-today))/left;
-    var st=data.start||t0,dd=Math.max(0,Math.round((t0-st)/864e5)),wl=Math.min(left,7-dd%7),wk=allow*wl;
-return {spent:spent,left:pot-spent,allow:allow,today:allow-today,pot:pot,week:wk-today,wallow:wk};
-  }
+var n=new Date(),t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()).getTime(),
+st=data.start||t0,dd=Math.max(0,Math.round((t0-st)/864e5)),wi=Math.floor(dd/7),sd=new Date(st),
+ws=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()+wi*7).getTime(),
+we=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()+wi*7+7).getTime(),
+daysLeft=7-dd%7,spentWeek=0,spentToday=0;
+data.exp.forEach(function(e){
+if(e.t>=ws&&e.t<we){spentWeek+=e.a;if(e.t>=t0)spentToday+=e.a}
+});
+var wb=data.budget*(100-data.p[0]-data.p[1])/100/4,
+allow=(wb-(spentWeek-spentToday))/daysLeft;
+return {spent:spentWeek,left:wb-spentWeek,allow:allow,today:allow-spentToday,pot:wb,week:wb-spentWeek,wallow:wb};
+}
 
   function render(){
     bm=bm||!data.budget;
@@ -361,6 +365,7 @@ var c=document.createElement("div");c.className="sc";
 c.style.background="rgb(var("+p[1]+")/.22)";
 c.style.flex=Math.max(p[0],14);
 c.textContent=fmt(data.budget*p[0]/100);
+if(p[1]==="--a1"&&savedTotal()>0){var x=document.createElement("small");x.textContent="+"+fmt(savedTotal());c.appendChild(x)}
 sp.appendChild(c);
 });
 list.appendChild(sp);
@@ -388,7 +393,7 @@ var ps=0,py=0,pd=false;
 
   /* help: three-finger tap */
   function addP(t){var p=document.createElement("p");p.className="hp";p.textContent=t;rowsEl.appendChild(p)}
-  addP("The number in the center shows how much you can spend today or this week (swipe sideways to switch). Weeks count from the day you first entered your salary. Green: all good. Orange: the limit is almost used up. Red: you're over the limit.");
+  addP("The number in the center shows how much you can spend today or this week (swipe sideways to switch). Weeks count from the day you first entered your salary, and your own-spending share is split into four equal weeks. Whatever is left at the end of a week goes to savings (the yellow card in history). Green: all good. Orange: the limit is almost used up. Red: you're over the limit.");
   addP("Your salary is split into essentials, savings and your own spending. Log only your own spending: the daily limit is calculated from that share. You can adjust the shares.");
   [["m",0,14,0,-14,"Swipe up: add an expense"],
    ["t",0,0,0,0,"Hold the number: change salary"],
@@ -495,6 +500,26 @@ holdT=setTimeout(function(){holdFired=true;stopHold();buzz();askSalary()},900);
 stage.addEventListener("pointermove",function(e){if(holdT&&Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>12) stopHold()});
 stage.addEventListener("pointerup",stopHold);
 stage.addEventListener("pointercancel",function(){stopHold();holdFired=false});
+function weekIdx(){var n=new Date(),t0=new Date(n.getFullYear(),n.getMonth(),n.getDate()).getTime();return Math.floor(Math.max(0,Math.round((t0-(data.start||t0))/864e5))/7)}
+function weekSpent(i){
+var sd=new Date(data.start),a=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()+i*7).getTime(),
+b=new Date(sd.getFullYear(),sd.getMonth(),sd.getDate()+i*7+7).getTime(),sp=0;
+data.exp.forEach(function(e){if(e.t>=a&&e.t<b)sp+=e.a});
+return sp;
+}
+function weekLeft(i){return Math.max(0,data.budget*(100-data.p[0]-data.p[1])/400-weekSpent(i))}
+function savedTotal(){
+if(!data.start||!data.budget) return 0;
+var w=weekIdx(),t=0;
+for(var i=0;i<w;i++) t+=weekLeft(i);
+return t;
+}
+function weekClose(){
+if(!data.start||!data.budget) return;
+var w=weekIdx();
+if(data.seenW===undefined){data.seenW=w;save();return}
+if(w>data.seenW){data.seenW=w;save();var l=weekLeft(w-1);if(l>0) flashCap("+"+fmt(l)+" saved")}
+}
 var capT=null;
 function flashCap(t){cap.textContent=t;cap.style.opacity=1;clearTimeout(capT);capT=setTimeout(function(){cap.style.opacity=0},1600)}
 function toggleMode(){data.mode=data.mode==="week"?"day":"week";save();SND.tick(50);buzz();render();flashCap(data.mode==="week"?"this week":"today")}
@@ -535,6 +560,7 @@ var ed=$("ed"),edSeg=[],edH=[],drag=-1;
   render();
   try{
     if(!localStorage.getItem(KEY+".seen")){localStorage.setItem(KEY+".seen","1");setTimeout(openHelp,400)}
+weekClose();
   }catch(e){}
 })();
 </script>
